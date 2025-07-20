@@ -5,6 +5,20 @@ from scanner import check_balance_blockstream
 from telegram import send_to_telegram
 
 print("🚀 Starting BTC address scanner...")
+
+priv, pub, addr = generate_random_wallet()
+balance = check_balance_blockstream(addr)
+
+msg = (
+    f"✅ *Satoshi Scanner Started*\n"
+    f"*Address:* `{addr}`\n"
+    f"[🔍 View on Blockstream](https://blockstream.info/address/{addr})\n"
+    f"*Balance:* `{balance} BTC`\n"
+    f"*Public Key:* `{pub}`\n"
+    f"*Private Key:* `{priv}`"
+)
+send_to_telegram(msg)
+
 while True:
     priv, pub, addr = generate_random_wallet()
     balance = check_balance_blockstream(addr)
