@@ -1,8 +1,8 @@
 import time
 
-from bot.generator import generate_random_wallet
-from bot.scanner import check_balance_blockstream
-from bot.telegram import send_to_telegram
+from generator import generate_random_wallet
+from scanner import check_balance_blockstream
+from telegram import send_to_telegram
 
 print("🚀 Starting BTC address scanner...")
 while True:
