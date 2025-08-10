@@ -41,4 +41,4 @@ while True:
         )
         send_to_telegram(msg)
 
-    time.sleep(1)
+    time.sleep(0.1)
