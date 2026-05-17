@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("scanner")
 
-SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "0.1"))
+SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "1.0"))
 
 
 def format_alert(title, addr, balance, pub, priv):
