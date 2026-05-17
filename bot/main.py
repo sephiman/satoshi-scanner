@@ -2,8 +2,8 @@ import logging
 import os
 import time
 
+import checker
 from generator import generate_random_wallet
-from scanner import check_balance_blockstream
 from telegram import send_to_telegram
 
 logging.basicConfig(
@@ -28,11 +28,12 @@ def format_alert(title, addr, balance, pub, priv):
 
 def main():
     log.info("Starting BTC address scanner (interval=%ss)", SCAN_INTERVAL)
+    checker.init()
     send_to_telegram("*Satoshi Scanner Started*")
 
     while True:
         priv, pub, addr = generate_random_wallet()
-        balance = check_balance_blockstream(addr)
+        balance = checker.check_address(addr)
         log.debug("Scanned %s balance=%s BTC", addr, balance)
 
         if balance > 0:

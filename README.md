@@ -1,92 +1,146 @@
 # 🧠 Satoshi Scanner
 
-An educational Bitcoin tool that demonstrates how Bitcoin private keys, public keys, and legacy addresses (`1...`) are generated. It continuously scans randomly generated addresses and checks if they hold any BTC. If a wallet with funds is found, it sends a detailed Telegram alert.
+An educational Bitcoin tool that demonstrates how Bitcoin private keys, public keys, and legacy addresses (`1...`) are generated. It continuously scans randomly generated addresses and checks whether they hold any BTC. On a hit it sends a Telegram alert.
 
 ---
 
 ## 🔍 What does it do?
 
-- Generates random private keys (using secure entropy)  
-- Derives the corresponding public key and legacy Bitcoin address  
-- Checks the balance of the address using Blockstream's API  
-- If the address has any BTC:
-  - Logs the result to the console
-  - Sends a Telegram alert with the address, balance, public key, and private key
+- Generates random private keys (secure entropy via `coincurve` / libsecp256k1).
+- Derives the corresponding public key and legacy Bitcoin address.
+- Checks the balance against one of two backends (see [Check modes](#-check-modes)).
+- On a non-zero balance: logs to the console and sends a Telegram alert with the address, balance, public key, and private key.
+
+---
+
+## 🧭 Check modes
+
+Set `CHECK_MODE` in your `.env`:
+
+| Mode         | How it works                                                                                                                                                                | Pros                                                | Cons                                                       |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------|------------------------------------------------------------|
+| `live`       | Calls `https://blockstream.info/api/address/{addr}` for each generated address.                                                                                             | No setup, always up-to-date.                        | Bound to public-API rate limits (~1 req/sec).              |
+| `database`   | Looks up the address in a local Postgres table of funded addresses. Only on a hit, it verifies via Blockstream to fetch the actual balance.                                 | Millions of addresses/sec, no rate-limit risk.      | Requires Postgres and a ~1.7 GB nightly dump load (once).  |
+
+`live` is the default (no DB needed).
 
 ---
 
 ## ⚙️ Configuration
 
-The bot uses the following environment variables:
+Copy `.env.example` to `.env` and fill it in:
 
-| Variable           | Description                                                  | Default |
-|--------------------|--------------------------------------------------------------|---------|
-| `TELEGRAM_TOKEN`   | Your Telegram bot token                                      | —       |
-| `TELEGRAM_CHAT_ID` | Chat ID to receive alerts                                    | —       |
-| `SCAN_INTERVAL`    | Seconds between address generations (free-API friendly)      | `1.0`   |
-| `LOG_LEVEL`        | Python logging level (`DEBUG`, `INFO`, `WARNING`, ...)       | `INFO`  |
-
-Example `.env`:
-
-```env
-TELEGRAM_TOKEN=123456:ABCDEF...
-TELEGRAM_CHAT_ID=12345678
+```bash
+cp .env.example .env
 ```
+
+| Variable                | Description                                                                  | Default                  |
+|-------------------------|------------------------------------------------------------------------------|--------------------------|
+| `TELEGRAM_TOKEN`        | Telegram bot token                                                           | —                        |
+| `TELEGRAM_CHAT_ID`      | Chat ID to receive alerts                                                    | —                        |
+| `CHECK_MODE`            | `live` or `database`                                                         | `live`                   |
+| `SCAN_INTERVAL`         | Seconds between address generations                                          | `1.0`                    |
+| `LOG_LEVEL`             | Python logging level (`DEBUG`, `INFO`, `WARNING`, …)                         | `INFO`                   |
+| `POSTGRES_HOST`         | Postgres host (only used in `database` mode)                                 | `postgresdb`             |
+| `POSTGRES_PORT`         | Postgres port                                                                | `5432`                   |
+| `POSTGRES_USER`         | Postgres user                                                                | —                        |
+| `POSTGRES_PASSWORD`     | Postgres password                                                            | —                        |
+| `POSTGRES_DB`           | Postgres database name                                                       | —                        |
+| `FUNDED_ADDRESSES_URL`  | Override for the dump URL                                                    | loyce.club LATEST dump   |
 
 ---
 
 ## 🐳 Run with Docker Compose
 
-1. Make sure you have a `.env` file with your credentials:
-
-```env
-TELEGRAM_TOKEN=123456:ABCDEF...
-TELEGRAM_CHAT_ID=12345678
-```
-
-2. Then build and start the scanner:
+The scanner joins the shared `all_dockers` external network so it can reach the homelab Postgres container by hostname `postgresdb`. Create it once per host if you haven't already:
 
 ```bash
-docker-compose up --build
+docker network create all_dockers
+```
+
+Then:
+
+```bash
+docker compose up --build -d
+docker compose logs -f scanner
 ```
 
 ---
 
----
+## 🗄️ Database mode setup
 
-## 🚀 Future improvement: local bloom-filter scanning
+### 1. Have Postgres running
 
-The current loop is bounded by Blockstream's free API rate limit (~1 request/sec). The "right" architecture is to do balance checks **locally** against a known set of funded addresses, eliminating the HTTP call entirely.
+The scanner expects a Postgres instance on the `all_dockers` network. The companion stack at `IdeaProjects/homelab/postgres` provides Postgres 17 + pgAdmin and exposes the hostname `postgresdb` on the shared network. Bring it up first.
 
-**Approach:**
+### 2. Provision database and credentials
 
-1. Download the nightly dump of all Bitcoin addresses with non-zero balance from [addresses.loyce.club](http://addresses.loyce.club/) (~500 MB compressed, ~1.7 GB uncompressed, ~50 million addresses).
-2. Build a bloom filter at startup (FPR ≈ 1e-6 → ~180 MB RAM, sub-microsecond lookups). Optionally persist to disk and mmap it for instant restarts.
-3. Generated addresses are checked against the filter first. Only on a (rare) hit, fall back to Blockstream to confirm and fetch the balance.
-4. Refresh the dump weekly via cron (staleness is fine — funded addresses don't disappear).
+Create a dedicated database and user for the scanner. From the host (using `psql` inside the postgres container):
 
-**Impact:**
+```bash
+docker exec -it postgresdb psql -U <admin-user> -d postgres
+```
 
-| Metric           | Current (API-bound) | With bloom filter (CPU-bound) |
-|------------------|---------------------|-------------------------------|
-| Throughput       | ~1 addr/sec         | >1,000,000 addr/sec           |
-| RAM              | ~30 MB              | ~210 MB                       |
-| Rate-limit risk  | Constant            | None (1 API call per ~1e6)    |
+Inside the `psql` prompt:
 
-Suggested new env vars when implementing:
+```sql
+CREATE USER scanner WITH PASSWORD 'changeme';
+CREATE DATABASE satoshi_scanner OWNER scanner;
+GRANT ALL PRIVILEGES ON DATABASE satoshi_scanner TO scanner;
+```
 
-| Variable                  | Description                                  |
-|---------------------------|----------------------------------------------|
-| `FUNDED_ADDRESSES_FILE`   | Path to the address list (txt or txt.gz)     |
-| `BLOOM_FILE`              | Optional path to persisted bloom filter      |
-| `BLOOM_FPR`               | Target false-positive rate (default `1e-6`)  |
+> You can also reuse an existing user/database — just point the env vars at them. A dedicated user is recommended because the table grows to a few GB.
 
-Candidate libraries: `pybloom-live` (pure Python, simple), `rbloom` (Rust-backed, fast and supports mmap-load), or roll one with `bitarray` + `mmh3`.
+### 3. Create the schema
 
-> Note: even at 1 M addr/sec, finding a real funded private key remains astronomically improbable. The 2¹⁶⁰ keyspace doesn't care how fast you go.
+The scanner creates the table automatically at startup, but if you want to provision it ahead of time:
+
+```sql
+\c satoshi_scanner
+
+CREATE TABLE IF NOT EXISTS funded_addresses (
+    address TEXT PRIMARY KEY
+);
+```
+
+That's the whole schema — one column, primary key on `address`, B-tree index gives O(log n) lookups.
+
+### 4. Set scanner env vars
+
+In the scanner's `.env`:
+
+```env
+CHECK_MODE=database
+POSTGRES_HOST=postgresdb
+POSTGRES_PORT=5432
+POSTGRES_USER=scanner
+POSTGRES_PASSWORD=changeme
+POSTGRES_DB=satoshi_scanner
+```
+
+### 5. First start
+
+On first start the scanner:
+
+1. Connects to Postgres and ensures the schema exists.
+2. Checks whether `funded_addresses` is empty.
+3. **If empty:** streams the latest dump from `addresses.loyce.club` (~500 MB gzipped, ~50 M addresses) and bulk-loads it via Postgres `COPY`. Progress is logged every 1 M rows. Expect 5–15 minutes on a homelab DB.
+4. **If non-empty:** skips the download entirely and starts scanning immediately.
+
+If you want to refresh the dataset later, manually truncate the table and restart the scanner:
+
+```sql
+TRUNCATE funded_addresses;
+```
+
+### 6. Lookup behaviour
+
+Every generated address is checked against `funded_addresses` with a single primary-key lookup (sub-millisecond). Only on a hit does the scanner fall back to Blockstream to fetch the current balance — so DB membership is treated as a pre-filter, not as proof that the wallet still has funds today.
+
+> Reminder: even at 1 M addresses/sec, hitting a funded private key remains astronomically improbable. The 2¹⁶⁰ keyspace doesn't care how fast you go.
 
 ---
 
 ## 🛑 Disclaimer
-📌 This project is for **educational purposes only** and does not attempt to brute-force real keys.
-This tool is not intended for misuse. Accessing wallets that do not belong to you may be illegal.
+
+📌 This project is for **educational purposes only** and does not attempt to brute-force real keys. Accessing wallets that do not belong to you may be illegal.
