@@ -1,6 +1,7 @@
 import logging
 import os
 
+from metrics import DB_LOOKUPS_TOTAL, time_db_lookup
 from scanner import check_balance_blockstream
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ def _db_conn():
             db.populate_from_dump(_conn)
         else:
             log.info("funded_addresses already populated; skipping dump load")
+        db.refresh_row_count(_conn)
     return _conn
 
 
@@ -27,8 +29,12 @@ def check_address(addr):
     if CHECK_MODE == "database":
         import db
         conn = _db_conn()
-        if not db.address_has_funds(conn, addr):
+        with time_db_lookup():
+            has_funds = db.address_has_funds(conn, addr)
+        if not has_funds:
+            DB_LOOKUPS_TOTAL.labels(result="miss").inc()
             return 0.0
+        DB_LOOKUPS_TOTAL.labels(result="hit").inc()
         log.info("Database HIT for %s — verifying against Blockstream", addr)
         return check_balance_blockstream(addr)
 

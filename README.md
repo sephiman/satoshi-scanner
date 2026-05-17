@@ -47,6 +47,7 @@ cp .env.example .env
 | `POSTGRES_PASSWORD`     | Postgres password                                                            | —                        |
 | `POSTGRES_DB`           | Postgres database name                                                       | —                        |
 | `FUNDED_ADDRESSES_URL`  | Override for the dump URL                                                    | loyce.club LATEST dump   |
+| `METRICS_PORT`          | Port exposing Prometheus `/metrics`                                          | `8000`                   |
 
 ---
 
@@ -138,6 +139,41 @@ TRUNCATE funded_addresses;
 Every generated address is checked against `funded_addresses` with a single primary-key lookup (sub-millisecond). Only on a hit does the scanner fall back to Blockstream to fetch the current balance — so DB membership is treated as a pre-filter, not as proof that the wallet still has funds today.
 
 > Reminder: even at 1 M addresses/sec, hitting a funded private key remains astronomically improbable. The 2¹⁶⁰ keyspace doesn't care how fast you go.
+
+---
+
+## 📊 Metrics & Grafana dashboard
+
+The scanner exposes Prometheus metrics on `:8000/metrics`. The companion homelab stack ([`sephiman/homelab`](https://github.com/sephiman/homelab/tree/main/monitoring)) auto-discovers any container on the `all_dockers` network that carries these labels (already set in `docker-compose.yml`):
+
+```yaml
+labels:
+  prometheus.scrape: "true"
+  prometheus.port: "8000"
+```
+
+Once both stacks are running, Grafana loads the dashboard **Homelab → Satoshi Scanner** automatically (file: [`monitoring/grafana/dashboards/satoshi-scanner.json`](https://github.com/sephiman/homelab/blob/main/monitoring/grafana/dashboards/satoshi-scanner.json)).
+
+### Exposed metrics
+
+| Metric                                    | Type      | Description                                                                                   |
+|-------------------------------------------|-----------|-----------------------------------------------------------------------------------------------|
+| `satoshi_addresses_generated_total`       | Counter   | Bitcoin addresses generated and scanned.                                                      |
+| `satoshi_addresses_checked_total`         | Counter   | Address checks, labelled by `mode` (`live`/`database`) and `result` (`zero`/`hit`).           |
+| `satoshi_wallets_found_total`             | Counter   | Wallets with non-zero balance found. Expected to stay at 0.                                   |
+| `satoshi_last_check_timestamp`            | Gauge     | Unix timestamp of the last completed check (use `time() - …` for staleness).                  |
+| `satoshi_blockstream_request_seconds`     | Histogram | Latency of Blockstream API calls.                                                             |
+| `satoshi_blockstream_requests_total`      | Counter   | Blockstream calls by `outcome`: `success` / `rate_limited` / `http_error` / `network_error` / `skipped_cooldown`. |
+| `satoshi_blockstream_cooldown_active`     | Gauge     | `1` while the 429 cooldown is in effect, `0` otherwise.                                       |
+| `satoshi_blockstream_backoff_seconds`     | Gauge     | Current cooldown window (doubles on 429, resets on success).                                  |
+| `satoshi_db_lookups_total`                | Counter   | `funded_addresses` lookups by `result` (`hit`/`miss`).                                        |
+| `satoshi_db_lookup_seconds`               | Histogram | Latency of `funded_addresses` lookups.                                                        |
+| `satoshi_db_funded_addresses_rows`        | Gauge     | Estimated row count of `funded_addresses` (sampled at startup and after dump load).           |
+| `satoshi_telegram_sent_total`             | Counter   | Telegram alerts successfully sent.                                                            |
+| `satoshi_telegram_send_errors_total`      | Counter   | Telegram `sendMessage` errors.                                                                |
+| `satoshi_scan_info{mode}`                 | Gauge     | Always `1`; carries the scanner's check-mode as a label.                                      |
+
+Standard `process_*` metrics (RSS memory, CPU seconds, FDs, GC) are exposed automatically by `prometheus_client`.
 
 ---
 
