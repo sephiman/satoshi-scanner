@@ -1,5 +1,7 @@
 # 🧠 Satoshi Scanner
 
+> A [**Sephilabs**](https://github.com/sephiman) project · Licensed under [AGPL-3.0](LICENSE)
+
 An educational Bitcoin tool that demonstrates how Bitcoin private keys, public keys, and legacy addresses (`1...`) are generated. It continuously scans randomly generated addresses and checks whether they hold any BTC. On a hit it sends a Telegram alert.
 
 ---
@@ -180,3 +182,13 @@ Standard `process_*` metrics (RSS memory, CPU seconds, FDs, GC) are exposed auto
 ## 🛑 Disclaimer
 
 📌 This project is for **educational purposes only** and does not attempt to brute-force real keys. Accessing wallets that do not belong to you may be illegal.
+
+---
+
+## 📜 License
+
+Copyright © 2024–2026 Sephilabs.
+
+Satoshi Scanner is free software: you can redistribute it and/or modify it under the terms of the **GNU Affero General Public License v3.0** as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [`LICENSE`](LICENSE) file for the full text.
+
+Because this is an AGPL-licensed network application, if you run a modified version and let users interact with it over a network, you must also offer them the corresponding source code.
