@@ -25,19 +25,42 @@ def _db_conn():
     return _conn
 
 
-def check_address(addr):
-    if CHECK_MODE == "database":
-        import db
+def _reset_conn():
+    """Drop the cached connection so the next lookup reconnects. Called when a
+    DB error suggests the connection is broken (e.g. Postgres restarted)."""
+    global _conn
+    if _conn is not None:
+        try:
+            _conn.close()
+        except Exception:
+            pass
+        _conn = None
+
+
+def _check_database(addr):
+    import psycopg
+
+    import db
+
+    try:
         conn = _db_conn()
         with time_db_lookup():
             has_funds = db.address_has_funds(conn, addr)
-        if not has_funds:
-            DB_LOOKUPS_TOTAL.labels(result="miss").inc()
-            return 0.0
-        DB_LOOKUPS_TOTAL.labels(result="hit").inc()
-        log.info("Database HIT for %s — verifying against Blockstream", addr)
-        return check_balance_blockstream(addr)
+    except psycopg.Error:
+        _reset_conn()
+        raise
 
+    if not has_funds:
+        DB_LOOKUPS_TOTAL.labels(result="miss").inc()
+        return 0.0
+    DB_LOOKUPS_TOTAL.labels(result="hit").inc()
+    log.info("Database HIT for %s — verifying against Blockstream", addr)
+    return check_balance_blockstream(addr)
+
+
+def check_address(addr):
+    if CHECK_MODE == "database":
+        return _check_database(addr)
     return check_balance_blockstream(addr)
 
 

@@ -63,3 +63,32 @@ def test_database_hit_verifies_via_blockstream(monkeypatch):
 
     assert checker.check_address("1abc") == 2.5
     assert called == ["1abc"]
+
+
+def test_database_error_resets_connection_and_reraises(monkeypatch):
+    import psycopg
+
+    import db as db_module
+
+    monkeypatch.setattr(checker, "CHECK_MODE", "database")
+
+    closed = []
+
+    class FakeConn:
+        def close(self):
+            closed.append(True)
+
+    checker._conn = FakeConn()
+    monkeypatch.setattr(checker, "_db_conn", lambda: checker._conn)
+
+    def boom(conn, addr):
+        raise psycopg.OperationalError("connection lost")
+
+    monkeypatch.setattr(db_module, "address_has_funds", boom)
+
+    with pytest.raises(psycopg.OperationalError):
+        checker.check_address("1abc")
+
+    # Broken connection was closed and cleared so the next call reconnects.
+    assert closed == [True]
+    assert checker._conn is None

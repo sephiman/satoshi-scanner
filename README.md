@@ -163,6 +163,7 @@ Once both stacks are running, Grafana loads the dashboard **Homelab → Satoshi 
 | `satoshi_addresses_generated_total`       | Counter   | Bitcoin addresses generated and scanned.                                                      |
 | `satoshi_addresses_checked_total`         | Counter   | Address checks, labelled by `mode` (`live`/`database`) and `result` (`zero`/`hit`).           |
 | `satoshi_wallets_found_total`             | Counter   | Wallets with non-zero balance found. Expected to stay at 0.                                   |
+| `satoshi_scan_errors_total`               | Counter   | Scan iterations that raised an unexpected error and were skipped (the loop keeps running).    |
 | `satoshi_last_check_timestamp`            | Gauge     | Unix timestamp of the last completed check (use `time() - …` for staleness).                  |
 | `satoshi_blockstream_request_seconds`     | Histogram | Latency of Blockstream API calls.                                                             |
 | `satoshi_blockstream_requests_total`      | Counter   | Blockstream calls by `outcome`: `success` / `rate_limited` / `http_error` / `network_error` / `skipped_cooldown`. |
@@ -176,6 +177,32 @@ Once both stacks are running, Grafana loads the dashboard **Homelab → Satoshi 
 | `satoshi_scan_info{mode}`                 | Gauge     | Always `1`; carries the scanner's check-mode as a label.                                      |
 
 Standard `process_*` metrics (RSS memory, CPU seconds, FDs, GC) are exposed automatically by `prometheus_client`.
+
+---
+
+## 🧪 Development
+
+The runtime targets **Python 3.13** (the Docker base image). coincurve does not yet
+publish wheels for 3.14, so stick to 3.13 for a local virtualenv.
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+Run the checks:
+
+```bash
+ruff check .                     # lint
+pytest -m "not integration"      # fast unit tests
+pytest                           # full suite (integration tests need Docker)
+```
+
+The integration tests spin up a throwaway Postgres via
+[testcontainers](https://testcontainers.com/); they're skipped automatically when
+Docker isn't reachable. CI (`.github/workflows/ci.yml`) runs lint, the full test
+suite, and a Docker build on every push and pull request.
 
 ---
 

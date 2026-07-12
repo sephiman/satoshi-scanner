@@ -2,10 +2,17 @@ venv/
 .venv/
 .git/
 .gitignore
+.github/
 .idea/
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.ruff_cache/
 .env
 LICENSE
 README.md
+tests/
+pytest.ini
+pyproject.toml
+requirements-dev.txt

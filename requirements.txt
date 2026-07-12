@@ -1,5 +1,5 @@
 coincurve==21.0.0
 base58==2.1.1
-requests==2.32.3
-psycopg[binary]==3.2.3
-prometheus-client==0.21.0
+requests==2.34.2
+psycopg[binary]==3.3.4
+prometheus-client==0.25.0

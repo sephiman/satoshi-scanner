@@ -30,6 +30,11 @@ WALLETS_FOUND_TOTAL = Counter(
     "Wallets with a non-zero balance discovered.",
 )
 
+SCAN_ERRORS_TOTAL = Counter(
+    "satoshi_scan_errors_total",
+    "Scan iterations that raised an unexpected error and were skipped.",
+)
+
 LAST_CHECK_TIMESTAMP = Gauge(
     "satoshi_last_check_timestamp",
     "Unix timestamp of the last completed address check.",

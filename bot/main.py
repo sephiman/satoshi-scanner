@@ -1,6 +1,7 @@
 import logging
 import os
-import time
+import signal
+import threading
 
 from prometheus_client import start_http_server
 
@@ -10,6 +11,7 @@ from metrics import (
     ADDRESSES_CHECKED_TOTAL,
     ADDRESSES_GENERATED_TOTAL,
     LAST_CHECK_TIMESTAMP,
+    SCAN_ERRORS_TOTAL,
     WALLETS_FOUND_TOTAL,
 )
 from telegram import send_to_telegram
@@ -24,6 +26,15 @@ SCAN_INTERVAL = float(os.getenv("SCAN_INTERVAL", "1.0"))
 METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
 CHECK_MODE = os.getenv("CHECK_MODE", "live").lower()
 
+# Set when a shutdown signal is received. Used both to break the scan loop and
+# as an interruptible replacement for time.sleep so shutdown is prompt.
+_shutdown = threading.Event()
+
+
+def _handle_signal(signum, _frame):
+    log.info("Received %s; shutting down gracefully", signal.Signals(signum).name)
+    _shutdown.set()
+
 
 def format_alert(title, addr, balance, pub, priv):
     return (
@@ -36,30 +47,46 @@ def format_alert(title, addr, balance, pub, priv):
     )
 
 
+def scan_once():
+    priv, pub, addr = generate_random_wallet()
+    ADDRESSES_GENERATED_TOTAL.inc()
+    balance = checker.check_address(addr)
+    LAST_CHECK_TIMESTAMP.set_to_current_time()
+    log.debug("Scanned %s balance=%s BTC", addr, balance)
+
+    if balance > 0:
+        ADDRESSES_CHECKED_TOTAL.labels(mode=CHECK_MODE, result="hit").inc()
+        WALLETS_FOUND_TOTAL.inc()
+        log.info("Wallet with balance found: %s (%s BTC)", addr, balance)
+        send_to_telegram(format_alert("*Wallet Found!*", addr, balance, pub, priv))
+    else:
+        ADDRESSES_CHECKED_TOTAL.labels(mode=CHECK_MODE, result="zero").inc()
+
+
 def main():
     log.info("Starting BTC address scanner (interval=%ss)", SCAN_INTERVAL)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
     start_http_server(METRICS_PORT)
     log.info("Prometheus metrics exposed on :%d/metrics", METRICS_PORT)
     checker.init()
     send_to_telegram("*Satoshi Scanner Started*")
 
-    while True:
-        priv, pub, addr = generate_random_wallet()
-        ADDRESSES_GENERATED_TOTAL.inc()
-        balance = checker.check_address(addr)
-        LAST_CHECK_TIMESTAMP.set_to_current_time()
-        log.debug("Scanned %s balance=%s BTC", addr, balance)
-
-        if balance > 0:
-            ADDRESSES_CHECKED_TOTAL.labels(mode=CHECK_MODE, result="hit").inc()
-            WALLETS_FOUND_TOTAL.inc()
-            log.info("Wallet with balance found: %s (%s BTC)", addr, balance)
-            send_to_telegram(format_alert("*Wallet Found!*", addr, balance, pub, priv))
-        else:
-            ADDRESSES_CHECKED_TOTAL.labels(mode=CHECK_MODE, result="zero").inc()
+    while not _shutdown.is_set():
+        try:
+            scan_once()
+        except Exception:
+            # A single failed check (network blip, dropped DB connection, …)
+            # must not take the scanner down. Log it and keep going; checker
+            # rebuilds a broken DB connection on the next iteration.
+            SCAN_ERRORS_TOTAL.inc()
+            log.exception("Scan iteration failed; continuing")
 
         if SCAN_INTERVAL > 0:
-            time.sleep(SCAN_INTERVAL)
+            _shutdown.wait(SCAN_INTERVAL)
+
+    log.info("Scanner stopped")
 
 
 if __name__ == "__main__":
