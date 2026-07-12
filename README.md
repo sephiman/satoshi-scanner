@@ -82,7 +82,7 @@ docker compose up --build -d
 docker compose logs -f scanner
 ```
 
-The container runs as a non-root user, answers Docker health checks via the metrics endpoint, and shuts down gracefully on `docker stop`. Found wallets are kept on the `scanner_data` named volume.
+The container runs as a non-root user, answers Docker health checks via the metrics endpoint, and shuts down gracefully on `docker stop`. Found wallets are kept on the `scanner_data` named volume. CPU usage is hard-capped at **0.5 cores** (`cpus:` in `docker-compose.yml`) so the scanner can never hog the host — raise it temporarily if the initial dump load feels slow.
 
 ---
 

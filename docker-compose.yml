@@ -15,6 +15,10 @@ services:
       - all_dockers
     restart: unless-stopped
     stop_grace_period: 30s
+    # Hard ceiling (in cores) so the scanner can never hog the host, whatever
+    # the BATCH_SIZE/SCAN_INTERVAL settings. Raise if the initial dump load
+    # feels too slow — gzip decompression runs under the same cap.
+    cpus: 0.5
 
 volumes:
   scanner_data:
