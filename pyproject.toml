@@ -3,8 +3,31 @@ name = "satoshi-scanner"
 version = "1.0.0"
 description = "Educational Bitcoin address scanner with Telegram alerts and Prometheus metrics."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
+dependencies = [
+    "coincurve==21.0.0",
+    "base58==2.1.1",
+    "requests==2.34.2",
+    "psycopg[binary]==3.3.4",
+    "prometheus-client==0.25.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-mock==3.15.1",
+    "pytest-cov==7.1.0",
+    "responses==0.26.2",
+    "testcontainers[postgres]==4.14.2",
+    "ruff==0.15.21",
+    "mypy==2.2.0",
+    "types-requests==2.33.0.20260712",
+]
+
+[tool.uv]
+# Not an installable package: bot/ is run directly, never built or installed.
+package = false
 
 [tool.ruff]
 target-version = "py313"
@@ -21,6 +44,19 @@ select = [
     "C4",  # flake8-comprehensions
 ]
 
+[tool.mypy]
+python_version = "3.13"
+files = ["bot"]
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["coincurve", "coincurve.*", "base58"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["bot"]
@@ -30,3 +66,9 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+
+[tool.coverage.run]
+source = ["bot"]
+
+[tool.coverage.report]
+show_missing = true

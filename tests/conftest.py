@@ -1,4 +1,3 @@
-
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
@@ -27,19 +26,23 @@ def postgres_container():
 
     from testcontainers.postgres import PostgresContainer
 
-    with PostgresContainer("postgres:16-alpine") as pg:
+    with PostgresContainer("postgres:17-alpine") as pg:
         yield pg
 
 
 @pytest.fixture(scope="session")
 def pg_env(postgres_container, session_monkeypatch):
-    session_monkeypatch.setenv("POSTGRES_HOST", postgres_container.get_container_host_ip())
-    session_monkeypatch.setenv(
-        "POSTGRES_PORT", str(postgres_container.get_exposed_port(5432))
+    import config
+
+    session_monkeypatch.setattr(
+        config, "POSTGRES_HOST", postgres_container.get_container_host_ip()
     )
-    session_monkeypatch.setenv("POSTGRES_USER", postgres_container.username)
-    session_monkeypatch.setenv("POSTGRES_PASSWORD", postgres_container.password)
-    session_monkeypatch.setenv("POSTGRES_DB", postgres_container.dbname)
+    session_monkeypatch.setattr(
+        config, "POSTGRES_PORT", int(postgres_container.get_exposed_port(5432))
+    )
+    session_monkeypatch.setattr(config, "POSTGRES_USER", postgres_container.username)
+    session_monkeypatch.setattr(config, "POSTGRES_PASSWORD", postgres_container.password)
+    session_monkeypatch.setattr(config, "POSTGRES_DB", postgres_container.dbname)
     yield
 
 
@@ -50,6 +53,8 @@ def db_conn(pg_env):
     conn = db_module.get_conn()
     with conn.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS funded_addresses")
+        cur.execute("DROP TABLE IF EXISTS funded_addresses_staging")
+        cur.execute("DROP TABLE IF EXISTS scanner_meta")
     conn.commit()
     yield conn
     conn.close()

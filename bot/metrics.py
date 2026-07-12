@@ -3,20 +3,25 @@ Prometheus metrics for satoshi-scanner.
 
 A homelab Prometheus scrapes containers labeled `prometheus.scrape=true`
 on `prometheus.port=8000` (the prometheus_client default endpoint /metrics).
-See https://github.com/<your-user>/homelab/tree/main/monitoring for the
+See https://github.com/sephiman/homelab/tree/main/monitoring for the
 scrape config + the matching Grafana dashboard.
 """
-import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from prometheus_client import Counter, Gauge, Histogram
 
-CHECK_MODE = os.getenv("CHECK_MODE", "live").lower()
+import config
+
+KEYS_GENERATED_TOTAL = Counter(
+    "satoshi_keys_generated_total",
+    "Private keys generated.",
+)
 
 ADDRESSES_GENERATED_TOTAL = Counter(
     "satoshi_addresses_generated_total",
-    "Bitcoin addresses generated and scanned.",
+    "Bitcoin addresses generated and scanned (several per key).",
 )
 
 ADDRESSES_CHECKED_TOTAL = Counter(
@@ -28,6 +33,11 @@ ADDRESSES_CHECKED_TOTAL = Counter(
 WALLETS_FOUND_TOTAL = Counter(
     "satoshi_wallets_found_total",
     "Wallets with a non-zero balance discovered.",
+)
+
+FOUND_PERSIST_ERRORS_TOTAL = Counter(
+    "satoshi_found_persist_errors_total",
+    "Failures writing a found wallet to the on-disk record.",
 )
 
 SCAN_ERRORS_TOTAL = Counter(
@@ -69,13 +79,18 @@ DB_LOOKUPS_TOTAL = Counter(
 
 DB_LOOKUP_SECONDS = Histogram(
     "satoshi_db_lookup_seconds",
-    "Latency of funded_addresses lookups.",
+    "Latency of funded_addresses lookups (one observation per batch).",
     buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
 )
 
 DB_FUNDED_ADDRESSES_ROWS = Gauge(
     "satoshi_db_funded_addresses_rows",
     "Row count of the funded_addresses table (sampled at startup and after dump load).",
+)
+
+DUMP_LOADED_TIMESTAMP = Gauge(
+    "satoshi_dump_loaded_timestamp",
+    "Unix timestamp of the last funded-address dump load.",
 )
 
 TELEGRAM_SENT_TOTAL = Counter(
@@ -85,7 +100,7 @@ TELEGRAM_SENT_TOTAL = Counter(
 
 TELEGRAM_SEND_ERRORS_TOTAL = Counter(
     "satoshi_telegram_send_errors_total",
-    "Telegram sendMessage errors.",
+    "Telegram sendMessage errors (including retried attempts).",
 )
 
 SCAN_INFO = Gauge(
@@ -93,11 +108,11 @@ SCAN_INFO = Gauge(
     "Static info about the running scanner (value is always 1).",
     ["mode"],
 )
-SCAN_INFO.labels(mode=CHECK_MODE).set(1)
+SCAN_INFO.labels(mode=config.CHECK_MODE).set(1)
 
 
 @contextmanager
-def time_blockstream_call():
+def time_blockstream_call() -> Iterator[None]:
     start = time.perf_counter()
     try:
         yield
@@ -106,7 +121,7 @@ def time_blockstream_call():
 
 
 @contextmanager
-def time_db_lookup():
+def time_db_lookup() -> Iterator[None]:
     start = time.perf_counter()
     try:
         yield

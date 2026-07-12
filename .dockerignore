@@ -9,10 +9,9 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .env
+data/
 LICENSE
 README.md
 tests/
-pytest.ini
-pyproject.toml
-requirements-dev.txt

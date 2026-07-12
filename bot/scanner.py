@@ -24,7 +24,7 @@ BLOCKSTREAM_BACKOFF_SECONDS.set(_backoff)
 BLOCKSTREAM_COOLDOWN_ACTIVE.set(0)
 
 
-def check_balance_blockstream(addr):
+def check_balance_blockstream(addr: str) -> float:
     global _cooldown_until, _backoff
 
     now = time.monotonic()

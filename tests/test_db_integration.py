@@ -1,5 +1,6 @@
 import gzip
 import io
+from datetime import UTC, datetime
 
 import pytest
 import responses
@@ -9,6 +10,8 @@ from metrics import DB_FUNDED_ADDRESSES_ROWS
 
 pytestmark = pytest.mark.integration
 
+DUMP_URL = "http://fake-dump.test/addresses.txt.gz"
+
 
 def _gzip_bytes(addresses):
     buf = io.BytesIO()
@@ -17,15 +20,21 @@ def _gzip_bytes(addresses):
     return buf.getvalue()
 
 
-def test_ensure_schema_creates_table(db_conn):
+def _add_dump(addresses):
+    responses.add(
+        responses.GET, DUMP_URL, body=_gzip_bytes(addresses), content_type="application/gzip"
+    )
+
+
+def test_ensure_schema_creates_tables(db_conn):
     db.ensure_schema(db_conn)
 
     with db_conn.cursor() as cur:
         cur.execute(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_name = 'funded_addresses'"
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_name IN ('funded_addresses', 'scanner_meta')"
         )
-        assert cur.fetchone() is not None
+        assert {row[0] for row in cur.fetchall()} == {"funded_addresses", "scanner_meta"}
 
 
 def test_ensure_schema_is_idempotent(db_conn):
@@ -48,53 +57,76 @@ def test_is_table_empty(db_conn):
     assert db.is_table_empty(db_conn) is False
 
 
-def test_address_has_funds(db_conn):
+def test_addresses_with_funds_batch(db_conn):
     db.ensure_schema(db_conn)
     with db_conn.cursor() as cur:
-        cur.execute("INSERT INTO funded_addresses VALUES ('1known')")
+        cur.executemany(
+            "INSERT INTO funded_addresses VALUES (%s)", [("1known",), ("bc1qknown",)]
+        )
     db_conn.commit()
 
-    assert db.address_has_funds(db_conn, "1known") is True
-    assert db.address_has_funds(db_conn, "1unknown") is False
+    result = db.addresses_with_funds(
+        db_conn, ["1known", "bc1qknown", "1unknown", "3unknown"]
+    )
+    assert result == {"1known", "bc1qknown"}
+
+    assert db.addresses_with_funds(db_conn, []) == set()
+    assert db.addresses_with_funds(db_conn, ["1unknown"]) == set()
+
+
+def test_meta_roundtrip(db_conn):
+    db.ensure_schema(db_conn)
+
+    assert db.get_meta(db_conn, "some_key") is None
+    db.set_meta(db_conn, "some_key", "v1")
+    assert db.get_meta(db_conn, "some_key") == "v1"
+    db.set_meta(db_conn, "some_key", "v2")  # upsert
+    assert db.get_meta(db_conn, "some_key") == "v2"
 
 
 @responses.activate
-def test_populate_from_dump_loads_addresses(db_conn):
-    addresses = ["1addr_one", "1addr_two", "1addr_three"]
-    url = "http://fake-dump.test/addresses.txt.gz"
-
-    responses.add(
-        responses.GET,
-        url,
-        body=_gzip_bytes(addresses),
-        content_type="application/gzip",
-    )
-
+def test_populate_from_dump_loads_addresses_and_marks_time(db_conn):
+    _add_dump(["1addr_one", "1addr_two", "1addr_three"])
     db.ensure_schema(db_conn)
-    count = db.populate_from_dump(db_conn, url=url)
+
+    before = datetime.now(UTC)
+    count = db.populate_from_dump(db_conn, url=DUMP_URL)
 
     assert count == 3
-    assert db.address_has_funds(db_conn, "1addr_one")
-    assert db.address_has_funds(db_conn, "1addr_two")
-    assert db.address_has_funds(db_conn, "1addr_three")
-    assert not db.address_has_funds(db_conn, "1addr_missing")
+    assert db.addresses_with_funds(db_conn, ["1addr_one", "1addr_missing"]) == {"1addr_one"}
+
+    loaded_at = db.dump_loaded_at(db_conn)
+    assert loaded_at is not None
+    assert loaded_at >= before
 
 
 @responses.activate
 def test_populate_from_dump_skips_blank_lines(db_conn):
-    url = "http://fake-dump.test/addresses.txt.gz"
-
-    responses.add(
-        responses.GET,
-        url,
-        body=_gzip_bytes(["1one", "", "1two", "   ", "1three"]),
-        content_type="application/gzip",
-    )
-
+    _add_dump(["1one", "", "1two", "   ", "1three"])
     db.ensure_schema(db_conn)
-    count = db.populate_from_dump(db_conn, url=url)
+
+    assert db.populate_from_dump(db_conn, url=DUMP_URL) == 3
+
+
+@responses.activate
+def test_refresh_dataset_swaps_atomically(db_conn):
+    db.ensure_schema(db_conn)
+    _add_dump(["1old_a", "1old_b"])
+    db.populate_from_dump(db_conn, url=DUMP_URL)
+
+    _add_dump(["1new_a", "1new_b", "1new_c"])
+    count = db.refresh_dataset(db_conn, url=DUMP_URL)
 
     assert count == 3
+    assert db.addresses_with_funds(db_conn, ["1old_a", "1old_b"]) == set()
+    assert db.addresses_with_funds(db_conn, ["1new_a", "1new_b", "1new_c"]) == {
+        "1new_a", "1new_b", "1new_c",
+    }
+
+    # A second refresh must not trip over leftover staging index names.
+    _add_dump(["1newer_a"])
+    assert db.refresh_dataset(db_conn, url=DUMP_URL) == 1
+    assert db.addresses_with_funds(db_conn, ["1newer_a"]) == {"1newer_a"}
 
 
 def test_refresh_row_count_updates_gauge(db_conn):
