@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # 3.13 (not 3.14) because coincurve currently ships wheels only up to cp313;
 # on 3.14 pip falls back to a source build that fails.
