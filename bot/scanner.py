@@ -24,13 +24,16 @@ BLOCKSTREAM_BACKOFF_SECONDS.set(_backoff)
 BLOCKSTREAM_COOLDOWN_ACTIVE.set(0)
 
 
-def check_balance_blockstream(addr: str) -> float:
+def check_balance_blockstream(addr: str) -> float | None:
+    """Return the address balance in BTC, or None when the check could not
+    be performed (cooldown, rate limit, HTTP or network error). Callers must
+    treat None as "unknown", never as "empty"."""
     global _cooldown_until, _backoff
 
     now = time.monotonic()
     if now < _cooldown_until:
         BLOCKSTREAM_REQUESTS_TOTAL.labels(outcome="skipped_cooldown").inc()
-        return 0.0
+        return None
     BLOCKSTREAM_COOLDOWN_ACTIVE.set(0)
 
     try:
@@ -45,7 +48,7 @@ def check_balance_blockstream(addr: str) -> float:
             BLOCKSTREAM_COOLDOWN_ACTIVE.set(1)
             _backoff = min(_backoff * 2, _MAX_BACKOFF)
             BLOCKSTREAM_BACKOFF_SECONDS.set(_backoff)
-            return 0.0
+            return None
 
         r.raise_for_status()
         _backoff = _INITIAL_BACKOFF  # success resets backoff
@@ -58,8 +61,8 @@ def check_balance_blockstream(addr: str) -> float:
     except requests.HTTPError as e:
         log.warning("Balance lookup HTTP error for %s: %s", addr, e)
         BLOCKSTREAM_REQUESTS_TOTAL.labels(outcome="http_error").inc()
-        return 0.0
+        return None
     except requests.RequestException as e:
         log.warning("Balance lookup failed for %s: %s", addr, e)
         BLOCKSTREAM_REQUESTS_TOTAL.labels(outcome="network_error").inc()
-        return 0.0
+        return None

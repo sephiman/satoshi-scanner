@@ -40,12 +40,15 @@ def _handle_signal(signum: int, _frame: FrameType | None) -> None:
 
 
 def format_alert(hit: Hit) -> str:
+    balance = (
+        f"{hit.balance} BTC" if hit.balance is not None else "unverified — check manually"
+    )
     return (
         "*Wallet Found\\!*\n"
         f"*Address:* `{hit.address}`\n"
         f"*Type:* `{hit.addr_type}`\n"
         f"[View on Blockstream](https://blockstream.info/address/{hit.address})\n"
-        f"*Balance:* `{hit.balance} BTC`\n"
+        f"*Balance:* `{balance}`\n"
         f"*Private Key:* `{hit.wallet.priv_hex}`\n"
         f"*Public Key:* `{hit.wallet.pub_compressed_hex}`"
     )
@@ -68,7 +71,10 @@ def scan_once() -> None:
     for hit in hits:
         WALLETS_FOUND_TOTAL.inc()
         log.info(
-            "Wallet with balance found: %s (%s, %s BTC)", hit.address, hit.addr_type, hit.balance
+            "Wallet with balance found: %s (%s, %s)",
+            hit.address,
+            hit.addr_type,
+            f"{hit.balance} BTC" if hit.balance is not None else "unverified",
         )
         found.record(hit)  # durable first — the alert may fail
         send_to_telegram(format_alert(hit), retries=ALERT_RETRIES)

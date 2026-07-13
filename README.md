@@ -173,6 +173,8 @@ TRUNCATE funded_addresses;
 
 Each iteration generates `BATCH_SIZE` keys, derives all configured address forms, and checks the whole batch with **one** indexed `ANY()` query. Only on a hit does the scanner fall back to Blockstream to fetch the current balance — DB membership is treated as a pre-filter, not as proof that the wallet still has funds today.
 
+If that verification call *fails* (rate-limit cooldown, network error), the hit is **not** dropped: it is persisted and alerted as *unverified* (`balance_btc: null` in the JSONL record), because the key would otherwise never be seen again. Only a successful check showing a zero balance — a stale dump entry — discards the hit.
+
 > Reminder: even at millions of addresses/sec, hitting a funded private key remains astronomically improbable. The 2¹⁶⁰ keyspace doesn't care how fast you go.
 
 ---

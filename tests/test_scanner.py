@@ -42,7 +42,7 @@ def test_429_triggers_cooldown_and_doubles_backoff():
     initial = scanner._backoff
     result = scanner.check_balance_blockstream(addr)
 
-    assert result == 0.0
+    assert result is None
     assert scanner._cooldown_until > 0
     assert scanner._backoff == min(initial * 2, scanner._MAX_BACKOFF)
 
@@ -56,12 +56,12 @@ def test_cooldown_skips_http_call():
 
     result = scanner.check_balance_blockstream(addr)
 
-    assert result == 0.0
+    assert result is None
     assert len(responses.calls) == 0
 
 
 @responses.activate
-def test_http_error_returns_zero():
+def test_http_error_returns_none():
     addr = "1abc"
     responses.add(
         responses.GET,
@@ -69,11 +69,11 @@ def test_http_error_returns_zero():
         status=500,
     )
 
-    assert scanner.check_balance_blockstream(addr) == 0.0
+    assert scanner.check_balance_blockstream(addr) is None
 
 
 @responses.activate
-def test_network_error_returns_zero():
+def test_network_error_returns_none():
     addr = "1abc"
     responses.add(
         responses.GET,
@@ -81,7 +81,7 @@ def test_network_error_returns_zero():
         body=requests.ConnectionError("boom"),
     )
 
-    assert scanner.check_balance_blockstream(addr) == 0.0
+    assert scanner.check_balance_blockstream(addr) is None
 
 
 @responses.activate

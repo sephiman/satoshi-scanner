@@ -21,7 +21,7 @@ class Hit:
     wallet: Wallet
     address: str
     addr_type: str
-    balance: float
+    balance: float | None  # None = found in DB but live verification failed
 
 
 def _db_conn() -> psycopg.Connection:
@@ -75,11 +75,13 @@ def maybe_refresh_dataset() -> None:
 
 
 def _check_batch_live(wallets: list[Wallet]) -> list[Hit]:
+    # A failed check (None) is treated like a miss here: with no DB evidence,
+    # "empty" is the overwhelmingly likely truth for a random key.
     hits = []
     for wallet in wallets:
         for addr_type, addr in wallet.addresses.items():
             balance = check_balance_blockstream(addr)
-            if balance > 0:
+            if balance:
                 hits.append(Hit(wallet, addr, addr_type, balance))
     return hits
 
@@ -106,8 +108,15 @@ def _check_batch_database(wallets: list[Wallet]) -> list[Hit]:
         log.info("Database HIT for %s — verifying against Blockstream", addr)
         wallet, addr_type = by_addr[addr]
         balance = check_balance_blockstream(addr)
-        if balance > 0:
+        if balance is None:
+            # The DB says funded but the live check could not run (cooldown,
+            # rate limit, network error). This key will never be generated
+            # again, so keep the hit as unverified rather than dropping it.
+            log.warning("DB hit %s could not be verified; recording as unverified", addr)
+            hits.append(Hit(wallet, addr, addr_type, balance=None))
+        elif balance > 0:
             hits.append(Hit(wallet, addr, addr_type, balance))
+        # balance == 0.0: verified stale dump entry — genuinely a miss now.
     return hits
 
 

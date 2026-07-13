@@ -114,6 +114,43 @@ def test_database_hit_verifies_via_blockstream(monkeypatch):
     assert hits[0].balance == 2.5
 
 
+def test_live_mode_failed_check_is_not_a_hit(monkeypatch):
+    monkeypatch.setattr(config, "CHECK_MODE", "live")
+    wallet = make_wallet(1, {"p2pkh_c": "1abc"})
+
+    monkeypatch.setattr(checker, "check_balance_blockstream", lambda addr: None)
+
+    assert checker.check_batch([wallet]) == []
+
+
+def test_database_hit_with_failed_verification_is_kept_unverified(monkeypatch):
+    monkeypatch.setattr(config, "CHECK_MODE", "database")
+
+    monkeypatch.setattr(checker, "_db_conn", lambda: object())
+    monkeypatch.setattr(db_module, "addresses_with_funds", lambda conn, addrs: {"1hit"})
+    monkeypatch.setattr(checker, "check_balance_blockstream", lambda addr: None)
+
+    wallet = make_wallet(1, {"p2pkh_c": "1hit"})
+    hits = checker.check_batch([wallet])
+
+    assert len(hits) == 1
+    assert hits[0].address == "1hit"
+    assert hits[0].balance is None
+
+
+def test_database_hit_verified_empty_is_dropped(monkeypatch):
+    monkeypatch.setattr(config, "CHECK_MODE", "database")
+
+    monkeypatch.setattr(checker, "_db_conn", lambda: object())
+    monkeypatch.setattr(db_module, "addresses_with_funds", lambda conn, addrs: {"1hit"})
+    monkeypatch.setattr(checker, "check_balance_blockstream", lambda addr: 0.0)
+
+    wallet = make_wallet(1, {"p2pkh_c": "1hit"})
+
+    # Stale dump entry: verified as genuinely empty today — not a hit.
+    assert checker.check_batch([wallet]) == []
+
+
 def test_database_error_resets_connection_and_reraises(monkeypatch):
     monkeypatch.setattr(config, "CHECK_MODE", "database")
 

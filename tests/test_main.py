@@ -144,3 +144,12 @@ def test_format_alert_contains_fields():
     assert f"`{WALLET.priv_hex}`" in msg
     assert f"`{WALLET.pub_compressed_hex}`" in msg
     assert "blockstream.info/address/1addr" in msg
+
+
+def test_format_alert_unverified_balance():
+    unverified = Hit(wallet=WALLET, address="1addr", addr_type="p2pkh_c", balance=None)
+    msg = main.format_alert(unverified)
+
+    assert "unverified" in msg
+    assert "None" not in msg
+    assert f"`{WALLET.priv_hex}`" in msg

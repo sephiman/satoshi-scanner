@@ -25,7 +25,8 @@ def record(hit: Hit) -> None:
             "found_at": datetime.now(UTC).isoformat(),
             "address": hit.address,
             "address_type": hit.addr_type,
-            "balance_btc": hit.balance,
+            "balance_btc": hit.balance,  # null = DB hit whose live check failed
+            "verified": hit.balance is not None,
             "private_key": hit.wallet.priv_hex,
             "public_key_compressed": hit.wallet.pub_compressed_hex,
             "public_key_uncompressed": hit.wallet.pub_uncompressed_hex,

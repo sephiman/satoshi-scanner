@@ -28,9 +28,22 @@ def test_record_appends_json_line(tmp_path, monkeypatch):
     assert entry["address"] == "1addr"
     assert entry["address_type"] == "p2pkh_c"
     assert entry["balance_btc"] == 0.5
+    assert entry["verified"] is True
     assert entry["private_key"] == WALLET.priv_hex
     assert entry["public_key_compressed"] == WALLET.pub_compressed_hex
     assert "found_at" in entry
+
+
+def test_record_unverified_hit(tmp_path, monkeypatch):
+    path = tmp_path / "found.jsonl"
+    monkeypatch.setattr(config, "FOUND_WALLETS_FILE", str(path))
+
+    unverified = Hit(wallet=WALLET, address="1addr", addr_type="p2pkh_c", balance=None)
+    found.record(unverified)
+
+    entry = json.loads(path.read_text().splitlines()[0])
+    assert entry["balance_btc"] is None
+    assert entry["verified"] is False
 
 
 def test_record_never_raises_on_disk_error(tmp_path, monkeypatch):
