@@ -8,21 +8,23 @@ them per key multiplies scan coverage at negligible cost:
   p2pkh_c     legacy 1... from the compressed public key (most funded legacy)
   p2sh_p2wpkh nested segwit 3... (BIP49)
   p2wpkh      native segwit bc1q... (BIP84)
+  p2tr        taproot bc1p... (BIP86 key-path, BIP341 tweak)
 """
 import hashlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import base58
-from coincurve import PrivateKey
+from coincurve import PrivateKey, PublicKey
 
 import config
 
-KNOWN_ADDRESS_TYPES = ("p2pkh_u", "p2pkh_c", "p2sh_p2wpkh", "p2wpkh")
+KNOWN_ADDRESS_TYPES = ("p2pkh_u", "p2pkh_c", "p2sh_p2wpkh", "p2wpkh", "p2tr")
 
-# --- bech32 (BIP-173 reference algorithm, segwit v0) ------------------------
+# --- bech32 / bech32m (BIP-173 / BIP-350 reference algorithm) ----------------
 
 _BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+_BECH32M_CONST = 0x2BC830A3  # BIP-350: witness v1+ uses bech32m, v0 uses bech32
 
 
 def _bech32_polymod(values: Iterable[int]) -> int:
@@ -40,8 +42,8 @@ def _bech32_hrp_expand(hrp: str) -> list[int]:
     return [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
 
 
-def _bech32_create_checksum(hrp: str, data: list[int]) -> list[int]:
-    polymod = _bech32_polymod(_bech32_hrp_expand(hrp) + data + [0] * 6) ^ 1
+def _bech32_create_checksum(hrp: str, data: list[int], const: int) -> list[int]:
+    polymod = _bech32_polymod(_bech32_hrp_expand(hrp) + data + [0] * 6) ^ const
     return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
 
 
@@ -63,7 +65,8 @@ def _convertbits(data: bytes, frombits: int, tobits: int) -> list[int]:
 
 def encode_segwit_address(hrp: str, witver: int, witprog: bytes) -> str:
     data = [witver] + _convertbits(witprog, 8, 5)
-    checksum = _bech32_create_checksum(hrp, data)
+    const = 1 if witver == 0 else _BECH32M_CONST
+    checksum = _bech32_create_checksum(hrp, data, const)
     return hrp + "1" + "".join(_BECH32_CHARSET[d] for d in data + checksum)
 
 
@@ -93,6 +96,23 @@ def p2sh_p2wpkh_address(pubkey_compressed: bytes) -> str:
 
 def p2wpkh_address(pubkey_compressed: bytes) -> str:
     return encode_segwit_address("bc", 0, _hash160(pubkey_compressed))
+
+
+def _tagged_hash(tag: str, msg: bytes) -> bytes:
+    tag_hash = hashlib.sha256(tag.encode()).digest()
+    return hashlib.sha256(tag_hash + tag_hash + msg).digest()
+
+
+def p2tr_address(pubkey_compressed: bytes) -> str:
+    """BIP86 key-path-only taproot: Q = lift_x(P) + tagged_hash(TapTweak, x)·G,
+    address = bech32m(v1, x(Q)). The x-only internal key implies even Y
+    (BIP340), so the point is rebuilt with an 0x02 prefix regardless of the
+    original parity."""
+    xonly = pubkey_compressed[1:]
+    internal = PublicKey(b"\x02" + xonly)
+    tweak = _tagged_hash("TapTweak", xonly)
+    output_key = internal.add(tweak)
+    return encode_segwit_address("bc", 1, output_key.format(compressed=True)[1:])
 
 
 @dataclass(frozen=True)
@@ -126,6 +146,8 @@ def derive_addresses(
             out[t] = p2sh_p2wpkh_address(pub_compressed)
         elif t == "p2wpkh":
             out[t] = p2wpkh_address(pub_compressed)
+        elif t == "p2tr":
+            out[t] = p2tr_address(pub_compressed)
         else:
             raise ValueError(f"Unknown address type: {t}")
     return out

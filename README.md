@@ -17,6 +17,7 @@ An educational Bitcoin tool that demonstrates how Bitcoin private keys, public k
   | `p2pkh_c`     | `1...`     | legacy, compressed public key                 |
   | `p2sh_p2wpkh` | `3...`     | nested segwit (BIP49)                         |
   | `p2wpkh`      | `bc1q...`  | native segwit (BIP84)                         |
+  | `p2tr`        | `bc1p...`  | taproot key-path (BIP86, BIP341 tweak)        |
 
 - Checks every derived address against one of two backends (see [Check modes](#-check-modes)).
 - On a non-zero balance: appends the wallet (key, address, balance) to an on-disk JSONL record **before** alerting, then sends a Telegram alert with retries.
@@ -50,7 +51,7 @@ cp .env.example .env
 | `TELEGRAM_CHAT_ID`      | Chat ID to receive alerts                                                          | —                                    |
 | `CHECK_MODE`            | `live` or `database`                                                               | `live`                               |
 | `SCAN_INTERVAL`         | Seconds between scan iterations                                                    | `1.0`                                |
-| `ADDRESS_TYPES`         | Comma-separated address forms to derive per key (see table above)                  | all four                             |
+| `ADDRESS_TYPES`         | Comma-separated address forms to derive per key (see table above)                  | all five                             |
 | `BATCH_SIZE`            | Keys generated per iteration in `database` mode (`live` always uses 1)             | `1000`                               |
 | `FOUND_WALLETS_FILE`    | JSONL file where found wallets are appended before alerting                        | `data/found_wallets.jsonl`           |
 | `LOG_LEVEL`             | Python logging level (`DEBUG`, `INFO`, `WARNING`, …)                               | `INFO`                               |
@@ -63,7 +64,7 @@ cp .env.example .env
 | `DUMP_MAX_AGE_DAYS`     | Re-download the dump when older than this many days (`0` disables)                 | `0`                                  |
 | `METRICS_PORT`          | Port exposing Prometheus `/metrics`                                                | `8000`                               |
 
-> ⚠️ In `live` mode each address type costs one Blockstream call per key, so with all four types enabled you make 4 calls per iteration. Trim `ADDRESS_TYPES` or raise `SCAN_INTERVAL` if you hit rate limits (the scanner backs off automatically on 429s).
+> ⚠️ In `live` mode each address type costs one Blockstream call per key, so with all five types enabled you make 5 calls per iteration. Trim `ADDRESS_TYPES` or raise `SCAN_INTERVAL` if you hit rate limits (the scanner backs off automatically on 429s).
 
 ---
 

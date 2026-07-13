@@ -24,7 +24,7 @@ BATCH_SIZE = int(_get("BATCH_SIZE", "1000"))
 # Address forms derived per private key; see generator.KNOWN_ADDRESS_TYPES.
 ADDRESS_TYPES = tuple(
     t.strip()
-    for t in _get("ADDRESS_TYPES", "p2pkh_c,p2pkh_u,p2sh_p2wpkh,p2wpkh").split(",")
+    for t in _get("ADDRESS_TYPES", "p2pkh_c,p2pkh_u,p2sh_p2wpkh,p2wpkh,p2tr").split(",")
     if t.strip()
 )
 
