@@ -76,12 +76,26 @@ The scanner joins the shared `all_dockers` external network so it can reach the 
 docker network create all_dockers
 ```
 
-Then:
+CI publishes the image as `ghcr.io/sephiman/satoshi-scanner-scanner` (`latest` from `main`, plus a `sha-<commit>` tag per build), and `docker-compose.yml` points at it while keeping its `build:` block, so the same file works both ways.
+
+**Deploy host** — run the published image. New GHCR packages are private, so log in once with a personal access token that has the `read:packages` scope:
 
 ```bash
-docker compose up --build -d
+docker login ghcr.io -u <github-user>     # paste the token as the password; one-time per host
+docker compose pull --policy always && docker compose up -d
 docker compose logs -f scanner
 ```
+
+Always pull before `up`: without it Compose keeps reusing whatever local `latest` it already has. `--policy always` makes a failed pull (e.g. not logged in) an error instead of a warning that would let `up` silently build from source.
+
+**Local** — build from source under the same image name:
+
+```bash
+docker compose up -d --build
+docker compose logs -f scanner
+```
+
+A local build overwrites the pulled `latest` tag (and vice versa), so pull again before going back to the published image.
 
 The container runs as a non-root user, answers Docker health checks via the metrics endpoint, and shuts down gracefully on `docker stop`. Found wallets are kept on the `scanner_data` named volume. CPU usage is hard-capped at **0.5 cores** (`cpus:` in `docker-compose.yml`) so the scanner can never hog the host — raise it temporarily if the initial dump load feels slow.
 
@@ -237,7 +251,7 @@ uv run pytest                        # full suite (integration tests need Docker
 
 The integration tests spin up a throwaway Postgres via [testcontainers](https://testcontainers.com/); they're skipped automatically when Docker isn't reachable.
 
-CI (`.github/workflows/ci.yml`) runs lint, mypy, the full test suite with a coverage gate, a Docker build with a Trivy vulnerability scan, and publishes the image to GHCR on pushes to `main`. Dependabot keeps Python packages, GitHub Actions, and the Docker base image up to date.
+CI (`.github/workflows/ci.yml`) runs lint, mypy, the full test suite with a coverage gate, and an `images` job (gated on lint and tests) that builds each image, scans it with Trivy, and publishes it to GHCR on every non-PR run — pull requests only build and scan. Dependabot keeps Python packages, GitHub Actions, and the Docker base image up to date.
 
 ---
 

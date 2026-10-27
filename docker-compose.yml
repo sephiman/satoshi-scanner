@@ -1,6 +1,7 @@
 services:
   scanner:
     container_name: satoshi-scanner
+    image: ghcr.io/sephiman/satoshi-scanner-scanner:latest
     build: .
     env_file:
       - path: .env
