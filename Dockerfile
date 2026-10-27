@@ -21,6 +21,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
+# uv does all installing; the base image's pip only adds vendored libs
+# (msgpack, setuptools, urllib3) that trip the image scan.
+RUN python -m pip uninstall --yes pip
+
 COPY bot/ ./bot/
 
 # Run as an unprivileged user rather than root; /app/data holds the
